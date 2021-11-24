@@ -11,6 +11,7 @@ fn main() {
     let cargo_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let dpdk_dir = env::var("RTE_SDK").unwrap();
     let dpdk_build = Path::new(&dpdk_dir).join("build");
+    pkg_config::Config::new().atleast_version("20.11").probe("libdpdk").unwrap(); 
 
     let dpdk_libs = dpdk_build.clone().join("lib");
     let native_path = Path::new(&cargo_dir)
@@ -31,6 +32,9 @@ fn main() {
         "cargo:rustc-link-search=native={}",
         native_path.to_str().unwrap()
     );
+
+    pkg_config::Config::new().atleast_version("20.11").probe("libdpdk").unwrap();
+
     let header_path = Path::new(&cargo_dir)
         .join("src")
         .join("native_include")
@@ -43,6 +47,7 @@ fn main() {
         .rustfmt_bindings(true)
         .rust_target(bindgen::RustTarget::Nightly)
         .clang_args(vec!["-I", dpdk_include_path.to_str().unwrap()].iter())
+//        .opaque_type("struct rte_ether_addr")
         .generate()
         .expect("Unable to generate DPDK bindings");
     let out_dir = env::var("OUT_DIR").unwrap();

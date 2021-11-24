@@ -564,7 +564,7 @@ fn trap_attached_debugger(tcs: usize) {
     // Synchronized
     unsafe {
         let old = signal::sigaction(signal::SIGTRAP, &sig_action).unwrap();
-        asm!("int3" : /* No output */
+        llvm_asm!("int3" : /* No output */
                     : /*input */ "{rbx}"(tcs)
                     :/* No clobber */
                     :"volatile");

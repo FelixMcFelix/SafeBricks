@@ -8,7 +8,7 @@ sudo mkdir -p /opt/dpdk/build/include/generic
 
 sudo rm -rf ~/trash/*
 
-src=~/tools/dpdk-stable-17.08.1/build/lib
+src=~/tools/dpdk-stable-20.11.3/build/lib
 dst=/opt/dpdk/build/lib
 
 #clean destination
@@ -19,7 +19,7 @@ fi
 
 sudo cp -r $src/* $dst
 
-src=~/tools/dpdk-stable-17.08.1/build/include
+src=~/tools/dpdk-stable-20.11.3/build/include
 dst=/opt/dpdk/build/include
 
 #clean destination
@@ -42,7 +42,7 @@ for i in `ls $src`; do
 done
 
 
-src=~/tools/dpdk-stable-17.08.1/build/include/exec-env
+src=~/tools/dpdk-stable-20.11.3/build/include/exec-env
 dst=/opt/dpdk/build/include/exec-env
 
 #clean destination
@@ -65,7 +65,7 @@ for i in `ls $src`; do
 done
 
 
-src=~/tools/dpdk-stable-17.08.1/build/include/generic
+src=~/tools/dpdk-stable-20.11.3/build/include/generic
 dst=/opt/dpdk/build/include/generic
 #clean destination
 if [ -d $dst ]; then

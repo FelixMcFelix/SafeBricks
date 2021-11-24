@@ -1,4 +1,5 @@
 CC = gcc
+PKGCONF ?= pkg-config
 
 ifndef RTE_SDK
 	$(error RTE_SDK is undefined)
@@ -17,7 +18,8 @@ else
 endif
 
 LDFLAGS += -L$(DPDK_LIB_DIR)
-LIBS += -Wl,--whole-archive -ldpdk -Wl,--no-whole-archive -Wl,-rpath=$(DPDK_LIB_DIR)
+#LIBS += -Wl,--whole-archive -ldpdk -Wl,--no-whole-archive -Wl,-rpath=$(DPDK_LIB_DIR)
+LIBS += $(shell $(PKGCONF) --libs --static libdpdk)
 #LIBS += -ldpdk -Wl,-rpath=$(DPDK_LIB_DIR)
 LIBS += -lm -lpthread -ldl -lpcap -lnuma
 
@@ -25,8 +27,8 @@ LIBS += -lm -lpthread -ldl -lpcap -lnuma
 CFLAGS = -std=gnu99 -g3 -ggdb3 -O3 -Wall -Werror -m64 -march=nehalem \
 	 -Wno-unused-function -Wno-unused-but-set-variable \
 	 -I$(DPDK_INC_DIR) -Iinclude/\
-	 -D_GNU_SOURCE \
-	 -fPIC
+	 -D_GNU_SOURCE -DALLOW_EXPERIMENTAL_API \
+	 -fPIC $(shell $(PKGCONF) --cflags libdpdk)
 
 SRCS = $(wildcard *.c)
 OBJS = $(SRCS:.c=.o)

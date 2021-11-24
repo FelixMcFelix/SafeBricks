@@ -2,6 +2,7 @@
 #include <rte_eal.h>
 #include <rte_ethdev.h>
 #include <rte_pci.h>
+#include <rte_bus_pci.h>
 #include "mempool.h"
 
 #define HW_RXCSUM 0
@@ -14,15 +15,17 @@ static const struct rte_eth_conf default_eth_conf = {
     .rxmode =
         {
             .mq_mode        = ETH_MQ_RX_RSS, /* Use RSS without DCB or VMDQ */
-            .max_rx_pkt_len = 0,             /* valid only if jumbo is on */
-            .split_hdr_size = 0,             /* valid only if HS is on */
-            .header_split   = 0,             /* Header Split off */
-            .hw_ip_checksum = HW_RXCSUM,     /* IP checksum offload */
-            .hw_vlan_filter = 0,             /* VLAN filtering */
-            .hw_vlan_strip  = 0,             /* VLAN strip */
-            .hw_vlan_extend = 0,             /* Extended VLAN */
-            .jumbo_frame    = 0,             /* Jumbo Frame support */
-            .hw_strip_crc   = 1,             /* CRC stripped by hardware */
+	    .max_rx_pkt_len = RTE_ETHER_MTU,
+	    .offloads       = DEV_RX_OFFLOAD_IPV4_CKSUM,
+            //.max_rx_pkt_len = 0,             /* valid only if jumbo is on */
+            //.split_hdr_size = 0,             /* valid only if HS is on */
+            //.header_split   = 0,             /* Header Split off */
+            //.hw_ip_checksum = HW_RXCSUM,     /* IP checksum offload */
+            //.hw_vlan_filter = 0,             /* VLAN filtering */
+            //.hw_vlan_strip  = 0,             /* VLAN strip */
+            //.hw_vlan_extend = 0,             /* Extended VLAN */
+            //.jumbo_frame    = 0,             /* Jumbo Frame support */
+            //.hw_strip_crc   = 1,             /* CRC stripped by hardware */
         },
     .txmode =
         {
@@ -47,11 +50,11 @@ static const struct rte_eth_conf default_eth_conf = {
 };
 
 int num_pmd_ports() {
-    return rte_eth_dev_count();
+    return rte_eth_dev_count_avail();
 }
 
 int get_pmd_ports(struct rte_eth_dev_info* info, int len) {
-    int num_ports   = rte_eth_dev_count();
+    int num_ports   = rte_eth_dev_count_avail();
     int num_entries = MIN(num_ports, len);
     for (int i = 0; i < num_entries; i++) {
         memset(&info[i], 0, sizeof(struct rte_eth_dev_info));
@@ -61,7 +64,7 @@ int get_pmd_ports(struct rte_eth_dev_info* info, int len) {
 }
 
 int get_rte_eth_dev_info(int dev, struct rte_eth_dev_info* info) {
-    if (dev >= rte_eth_dev_count()) {
+    if (dev >= rte_eth_dev_count_avail()) {
         return -ENODEV;
     } else {
         rte_eth_dev_info_get(dev, info);
@@ -88,7 +91,7 @@ int max_txqs(int dev) {
 }
 
 void enumerate_pmd_ports() {
-    int num_dpdk_ports = rte_eth_dev_count();
+    int num_dpdk_ports = rte_eth_dev_count_avail();
     int i;
 
     printf("%d DPDK PMD ports have been recognized:\n", num_dpdk_ports);
@@ -101,10 +104,14 @@ void enumerate_pmd_ports() {
         printf("DPDK port_id %d (%s)   RXQ %hu TXQ %hu  ", i, dev_info.driver_name,
                dev_info.max_rx_queues, dev_info.max_tx_queues);
 
-        if (dev_info.pci_dev) {
-            printf("%04hx:%02hhx:%02hhx.%02hhx %04hx:%04hx  ", dev_info.pci_dev->addr.domain,
-                   dev_info.pci_dev->addr.bus, dev_info.pci_dev->addr.devid, dev_info.pci_dev->addr.function,
-                   dev_info.pci_dev->id.vendor_id, dev_info.pci_dev->id.device_id);
+        if (dev_info.device) {
+            struct rte_bus *bus = rte_bus_find_by_device(dev_info.device);	
+	    if (bus && !strcmp(bus->name, "pci")) {
+                struct rte_pci_device *pci_dev = RTE_DEV_TO_PCI(dev_info.device);
+            	printf("%04hx:%02hhx:%02hhx.%02hhx %04hx:%04hx  ", pci_dev->addr.domain,
+                	   pci_dev->addr.bus, pci_dev->addr.devid, pci_dev->addr.function,
+	                   pci_dev->id.vendor_id, pci_dev->id.device_id);
+	    }
         }
 
         printf("\n");
@@ -146,8 +153,13 @@ int init_pmd_port(int port, int rxqs, int txqs, int rxq_core[], int txq_core[], 
     eth_txconf           = dev_info.default_txconf;
     tso                  = !(!tso);
     csumoffload          = !(!csumoffload);
-    eth_txconf.txq_flags = ETH_TXQ_FLAGS_NOVLANOFFL | ETH_TXQ_FLAGS_NOMULTSEGS * (1 - tso) |
-                           ETH_TXQ_FLAGS_NOXSUMS * (1 - csumoffload);
+    /* eth_txconf.txq_flags = ETH_TXQ_FLAGS_NOVLANOFFL | ETH_TXQ_FLAGS_NOMULTSEGS * (1 - tso) |
+                           ETH_TXQ_FLAGS_NOXSUMS * (1 - csumoffload); */
+    if (csumoffload)
+	eth_txconf.offloads |= DEV_TX_OFFLOAD_IPV4_CKSUM | DEV_TX_OFFLOAD_UDP_CKSUM |
+                               DEV_TX_OFFLOAD_TCP_CKSUM | DEV_TX_OFFLOAD_SCTP_CKSUM;
+    if (tso)
+        eth_txconf.offloads |= DEV_TX_OFFLOAD_MULTI_SEGS;
 
     ret = rte_eth_dev_configure(port, rxqs, txqs, &eth_conf);
     if (ret != 0) {
@@ -207,22 +219,26 @@ int send_pkts(int port, int qid, mbuf_array_t pkts, int len) {
 
 int find_port_with_pci_address(const char* pci) {
     struct rte_pci_addr addr;
+    struct rte_pci_device *pci_dev;
     char devargs[1024];
     int ret;
-    uint8_t port_id;
+    //uint8_t port_id;
 
     // Cannot parse address
-    if (eal_parse_pci_DomBDF(pci, &addr) != 0 && eal_parse_pci_BDF(pci, &addr) != 0) {
+    if (rte_pci_addr_parse(pci, &addr) != 0) {
         return -1;
     }
 
-    int n_devices = rte_eth_dev_count();
+    int n_devices = rte_eth_dev_count_avail();
     for (int i = 0; i < n_devices; i++) {
         struct rte_eth_dev_info dev_info;
         rte_eth_dev_info_get(i, &dev_info);
+	pci_dev = RTE_DEV_TO_PCI(dev_info.device);
 
-        if (dev_info.pci_dev) {
-            if (rte_eal_compare_pci_addr(&addr, &dev_info.pci_dev->addr)) {
+        if (pci_dev) {
+	    // surely the original is wrong? "if addr != devs[i].addr, return i"
+            //if (rte_pci_addr_cmp(&addr, &dev_info.pci_dev->addr)) {
+            if (rte_pci_addr_cmp(&addr, &(pci_dev->addr)) == 0) {
                 return i;
             }
         }
@@ -232,27 +248,53 @@ int find_port_with_pci_address(const char* pci) {
 
     snprintf(devargs, 1024, "%04x:%02x:%02x.%02x", addr.domain, addr.bus, addr.devid, addr.function);
 
-    ret = rte_eth_dev_attach(devargs, &port_id);
+    ret = rte_dev_probe(devargs);
 
-    if (ret < 0) {
-        return -1;
+    // They seem to have changes the api here: just try again? probe
+    // doesn't do the same thing as dev_attach (which actually handed back a port)
+    if (ret >= 0) {
+    n_devices = rte_eth_dev_count_avail();
+    for (int i = 0; i < n_devices; i++) {
+        struct rte_eth_dev_info dev_info;
+        rte_eth_dev_info_get(i, &dev_info);
+	pci_dev = RTE_DEV_TO_PCI(dev_info.device);
+
+        if (pci_dev) {
+	    // surely the original is wrong? "if addr != devs[i].addr, return i"
+            //if (rte_pci_addr_cmp(&addr, &dev_info.pci_dev->addr)) {
+            if (rte_pci_addr_cmp(&addr, &(pci_dev->addr)) == 0) {
+                return i;
+            }
+        }
     }
-    return (int)port_id;
+    }
+    return -1;//(int)port_id;
 }
 
 /* Attach a device with a given name (useful when attaching virtual devices). Returns either the
    port number of the
    device or an error if not found. */
 int attach_pmd_device(const char* devname) {
-    uint8_t port = 0;
+    uint16_t port = 0;
+    struct rte_devargs da = {0};
+
+    if (rte_devargs_parsef(&da, "%s", devname)) {
+	    return -1;
+    }
+
     printf("Devname: \"%s\"\n", devname);
-    int error = rte_eth_dev_attach(devname, &port);
+    //int error = rte_eth_dev_attach(devname, &port);
+    //int error = rte_dev_probe(devname);
+    int error = rte_eal_hotplug_add(da.bus->name, da.name, da.args);
 
     if (error != 0) {
         // Could not attach
         return -ENODEV;
     }
-    return (int)port;
+
+    error = rte_eth_dev_get_port_by_name(devname, &port);
+   
+    return (error != 0) ? error : port;
 }
 
 /* FIXME: Add function to modify RSS hash function using
