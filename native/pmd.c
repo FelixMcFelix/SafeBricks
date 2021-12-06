@@ -34,7 +34,7 @@ static const struct rte_eth_conf default_eth_conf = {
     /* FIXME: Find supported RSS hashes from rte_eth_dev_get_info */
     .rx_adv_conf.rss_conf =
         {
-            .rss_hf  = ETH_RSS_IP | ETH_RSS_UDP | ETH_RSS_TCP | ETH_RSS_SCTP,
+            .rss_hf  = 0,//ETH_RSS_IP | ETH_RSS_UDP | ETH_RSS_TCP | ETH_RSS_SCTP,
             .rss_key = NULL,
         },
     /* No flow director */

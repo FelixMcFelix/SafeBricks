@@ -1,4 +1,3 @@
-extern crate colored;
 extern crate fnv;
 #[macro_use]
 extern crate lazy_static;
@@ -14,7 +13,6 @@ use netbricks::scheduler::Scheduler;
 use netbricks::scheduler::{initialize_system, PKT_NUM};
 use std::sync::Arc;
 use std::fmt::Display;
-// use colored::*;
 // use std::net::Ipv4Addr;
 mod dpi;
 
